@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Document Tracker</title>
+    
+    <!-- PWA Metadata for Install Readiness (Universal/Android Focused) -->
+    <!-- Theme color for the browser's UI (used by Android Chrome) -->
+    <meta name="theme-color" content="#3b82f6"> 
+    <link rel="manifest" href="manifest.json"> 
+    <!-- Service Worker Registration for offline access and PWA installation -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            // FIX: Only attempt to register the Service Worker if running on a standard HTTP or HTTPS protocol.
+            // This prevents errors in sandbox environments like this one.
+            if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+                window.addEventListener('load', () => {
+                    // Using absolute path for better compatibility when deployed
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then(registration => {
+                            console.log('Service Worker registered:', registration.scope);
+                        })
+                        .catch(error => {
+                            console.error('Service Worker registration failed:', error);
+                        });
+                });
+            } else {
+                console.warn('Service Worker registration skipped: Application is running in a non-standard protocol environment.');
+            }
+        }
+    </script>
+    <!-- End PWA Metadata -->
+
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better readability and structure */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .container {
+            max-width: 900px;
+        }
+        .shadow-custom {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        /* Style for active tab */
+        .tab-active {
+            border-color: #3b82f6; /* blue-500 */
+            color: #3b82f6;
+            background-color: #eff6ff; /* blue-50 */
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div id="app" class="container mx-auto">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-extrabold text-gray-800">Document Tracker</h1>
+            <p class="text-lg text-gray-500 mt-2">Manage your documents with real-time storage.</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-200 mb-8">
+            <button id="trackerTabBtn" onclick="showTab('tracker')"
+                    class="py-2 px-4 text-sm font-medium border-b-2 transition duration-200 tab-active">
+                Tracker
+            </button>
+            <button id="updatesTabBtn" onclick="showTab('updates')"
+                    class="py-2 px-4 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:border-gray-300 hover:text-gray-700 transition duration-200">
+                Updates & Info
+            </button>
+        </div>
+
+        <!-- Content Containers -->
+        
+        <!-- 1. Main Tracker Content -->
+        <div id="trackerContent" class="space-y-10">
+            <!-- Loading & Auth Status -->
+            <div id="statusMessage" class="text-center p-3 rounded-lg bg-yellow-100 text-yellow-800 hidden">
+                Initializing application...
+            </div>
+
+            <!-- Document Entry Form -->
+            <div class="bg-white p-6 rounded-xl shadow-custom">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Add New Document</h2>
+                <form id="documentForm" class="space-y-4">
+                    <div>
+                        <label for="docType" class="block text-sm font-medium text-gray-700">Document Type</label>
+                        <input type="text" id="docType" required placeholder="e.g., Invoice, Contract, Report"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="docNumber" class="block text-sm font-medium text-gray-700">Document Number</label>
+                        <input type="text" id="docNumber" required placeholder="e.g., INV-2025-001"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="docDescription" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="docDescription" required rows="3" placeholder="A brief summary of the document purpose."
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                    </div>
+                    <button type="submit" id="saveButton" disabled
+                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition duration-150">
+                        Save Document
+                    </button>
+                </form>
+            </div>
+
+            <!-- Document List Display -->
+            <div class="bg-white p-6 rounded-xl shadow-custom">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4 flex justify-between items-center">
+                    Saved Documents
+                    <span id="userIdDisplay" class="text-xs font-mono text-gray-400 bg-gray-50 px-2 py-1 rounded">User ID: Loading...</span>
+                </h2>
+                <ul id="documentList" class="divide-y divide-gray-200">
+                    <li id="emptyState" class="p-4 text-center text-gray-500 hidden">No documents found. Add your first entry above!</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- 2. Updates/Future Features Content -->
+        <div id="updatesContent" class="hidden bg-white p-8 rounded-xl shadow-custom min-h-64">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Application Updates & Development Info</h2>
+            <p class="text-gray-600 mb-4">
+                This section is reserved for future updates, development notes, or integration information (like a link to your GitHub repository or version history).
+            </p>
+            <ul class="list-disc list-inside text-gray-700 space-y-2 ml-4">
+                <li>**Current Version:** 1.3.2 (Service Worker registration guarded)</li>
+                <li>**Data Storage:** Firebase Firestore (Private User Scope)</li>
+                <li>**Next Planned Feature:** Search and Filtering.</li>
+            </ul>
+        </div>
+
+        <!-- 3. Edit Modal/Popup -->
+        <div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50 transition-opacity duration-300" aria-modal="true" role="dialog">
+            <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all duration-300 scale-95 opacity-0" id="editModalBody">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Edit Document</h3>
+                <form id="editForm" class="space-y-4">
+                    <input type="hidden" id="editDocId">
+                    <div>
+                        <label for="editDocType" class="block text-sm font-medium text-gray-700">Document Type</label>
+                        <input type="text" id="editDocType" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="editDocNumber" class="block text-sm font-medium text-gray-700">Document Number</label>
+                        <input type="text" id="editDocNumber" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="editDocDescription" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="editDocDescription" required rows="3"
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                    </div>
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button type="button" onclick="closeEditModal()"
+                                class="py-2 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-150">
+                            Cancel
+                        </button>
+                        <button type="submit" id="updateButton"
+                                class="py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
+                            Update Document
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- Firebase Initialization and Application Logic -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // UI Elements
+        const form = document.getElementById('documentForm');
+        const list = document.getElementById('documentList');
+        const saveButton = document.getElementById('saveButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const emptyState = document.getElementById('emptyState');
+        const trackerContent = document.getElementById('trackerContent');
+        const updatesContent = document.getElementById('updatesContent');
+        const trackerTabBtn = document.getElementById('trackerTabBtn');
+        const updatesTabBtn = document.getElementById('updatesTabBtn');
+
+        // Edit Modal Elements
+        const editModal = document.getElementById('editModal');
+        const editModalBody = document.getElementById('editModalBody');
+        const editForm = document.getElementById('editForm');
+        const editDocId = document.getElementById('editDocId');
+        const editDocType = document.getElementById('editDocType');
+        const editDocNumber = document.getElementById('editDocNumber');
+        const editDocDescription = document.getElementById('editDocDescription');
+        const updateButton = document.getElementById('updateButton');
+
+        let db;
+        let auth;
+        let userId = null;
+
+        setLogLevel('Debug'); // Enable detailed logging
+
+        // --- Tab Management Function ---
+        window.showTab = function(tabName) {
+            // Hide all content and reset tab styles
+            trackerContent.classList.add('hidden');
+            updatesContent.classList.add('hidden');
+            trackerTabBtn.classList.remove('tab-active');
+            updatesTabBtn.classList.remove('tab-active');
+            
+            // Apply non-active styles to ensure proper hover behavior (Tailwind styling is simplified here)
+            trackerTabBtn.classList.add('text-gray-500', 'border-transparent', 'hover:border-gray-300', 'hover:text-gray-700');
+            updatesTabBtn.classList.add('text-gray-500', 'border-transparent', 'hover:border-gray-300', 'hover:text-gray-700');
+
+
+            // Show the selected tab content and style the button
+            if (tabName === 'tracker') {
+                trackerContent.classList.remove('hidden');
+                trackerTabBtn.classList.add('tab-active');
+                trackerTabBtn.classList.remove('text-gray-500', 'border-transparent', 'hover:border-gray-300', 'hover:text-gray-700');
+            } else if (tabName === 'updates') {
+                updatesContent.classList.remove('hidden');
+                updatesTabBtn.classList.add('tab-active');
+                updatesTabBtn.classList.remove('text-gray-500', 'border-transparent', 'hover:border-gray-300', 'hover:text-gray-700');
+            }
+        };
+
+
+        // --- CRUD Functions ---
+
+        /**
+         * Opens the modal and populates it with the document data for editing.
+         * @param {string} id - The Firestore document ID.
+         * @param {object} doc - The document data object.
+         */
+        window.editDocument = function(id, doc) {
+            if (!userId) return; // Guard
+            
+            editDocId.value = id;
+            editDocType.value = doc.documentType;
+            editDocNumber.value = doc.documentNumber;
+            editDocDescription.value = doc.description;
+
+            // Show the modal with transition effects
+            editModal.classList.remove('hidden');
+            setTimeout(() => {
+                editModal.classList.add('opacity-100');
+                editModalBody.classList.remove('opacity-0', 'scale-95');
+                editModalBody.classList.add('opacity-100', 'scale-100');
+            }, 10);
+        };
+
+        /**
+         * Closes the edit modal with transition effects.
+         */
+        window.closeEditModal = function() {
+            editModalBody.classList.remove('opacity-100', 'scale-100');
+            editModalBody.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => {
+                editModal.classList.add('hidden');
+            }, 300);
+        };
+
+        /**
+         * Handles the update logic for a document in Firestore.
+         * @param {Event} e - The submit event from the edit form.
+         */
+        async function updateDocument(e) {
+            e.preventDefault();
+            if (!db || !userId) return;
+
+            const id = editDocId.value;
+            const updatedDoc = {
+                documentType: editDocType.value.trim(),
+                documentNumber: editDocNumber.value.trim(),
+                description: editDocDescription.value.trim(),
+                // Keep the original timestamp, or add an 'updatedAt' field if needed
+            };
+
+            updateButton.textContent = "Updating...";
+            updateButton.disabled = true;
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'documents', id);
+                await updateDoc(docRef, updatedDoc);
+                console.log(`Document ${id} successfully updated.`);
+                closeEditModal();
+                // Real-time listener handles UI update
+            } catch (error) {
+                console.error("Error updating document:", error);
+                statusMessage.textContent = `Error updating document: ${error.message}`;
+                statusMessage.classList.remove('hidden');
+            } finally {
+                updateButton.textContent = "Update Document";
+                updateButton.disabled = false;
+            }
+        }
+        
+        /**
+         * Handles the deletion logic for a document in Firestore.
+         * @param {string} id - The Firestore document ID to delete.
+         * @param {string} docNumber - The document number for confirmation message.
+         */
+        window.deleteDocument = function(id, docNumber) {
+            // Custom confirmation dialog replacement
+            if (confirm(`Are you sure you want to delete document: ${docNumber}?`)) {
+                performDelete(id);
+            }
+        };
+
+        /**
+         * Executes the Firestore delete operation.
+         * @param {string} id - The Firestore document ID to delete.
+         */
+        async function performDelete(id) {
+            if (!db || !userId) return;
+            
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'documents', id);
+                await deleteDoc(docRef);
+                console.log(`Document ${id} successfully deleted.`);
+                // Real-time listener handles UI update
+            } catch (error) {
+                console.error("Error deleting document:", error);
+                statusMessage.textContent = `Error deleting document: ${error.message}`;
+                statusMessage.classList.remove('hidden');
+            }
+        }
+
+        // --- UI Rendering ---
+
+        /**
+         * Converts Firebase data into the required document HTML structure, including action buttons.
+         */
+        function renderDocumentItem(doc, id) {
+            // Prepare stringified object for easy passing to the edit function
+            const docDataString = JSON.stringify(doc).replace(/"/g, '&quot;'); 
+            
+            return `
+                <li class="p-4 hover:bg-gray-50 transition duration-100 flex justify-between items-center" data-doc-id="${id}">
+                    <div class="flex-grow">
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
+                            <p class="text-lg font-semibold text-gray-900">${doc.documentNumber}</p>
+                            <p class="text-sm text-blue-600 font-medium sm:ml-4">${doc.documentType}</p>
+                        </div>
+                        <p class="mt-1 text-gray-700 text-base italic">${doc.description}</p>
+                        <p class="text-xs text-gray-400 mt-1">Added: ${new Date(doc.timestamp).toLocaleDateString()}</p>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex space-x-2 ml-4 flex-shrink-0">
+                        <button onclick='editDocument("${id}", ${docDataString})'
+                            class="p-2 rounded-full text-blue-500 hover:bg-blue-100 transition duration-150" title="Edit">
+                            <!-- SVG Icon for Edit (Pencil) -->
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </button>
+                        <button onclick="deleteDocument('${id}', '${doc.documentNumber}')"
+                            class="p-2 rounded-full text-red-500 hover:bg-red-100 transition duration-150" title="Delete">
+                            <!-- SVG Icon for Delete (Trash) -->
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </li>
+            `;
+        }
+
+        /**
+         * Sets up the real-time listener for documents.
+         */
+        function loadDocuments() {
+            if (!db || !userId) {
+                console.error("Database or User ID not initialized.");
+                return;
+            }
+
+            // Path for private user data: /artifacts/{appId}/users/{userId}/documents
+            const documentsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'documents');
+            const q = query(documentsCollectionRef);
+
+            // Set up real-time listener
+            onSnapshot(q, (snapshot) => {
+                list.innerHTML = '';
+                const documents = [];
+
+                snapshot.forEach(doc => {
+                    const docData = doc.data();
+                    documents.push({
+                        id: doc.id,
+                        ...docData
+                    });
+                });
+
+                if (documents.length === 0) {
+                    emptyState.classList.remove('hidden');
+                } else {
+                    emptyState.classList.add('hidden');
+                    // Sort by timestamp descending (most recent first) before rendering
+                    documents.sort((a, b) => b.timestamp - a.timestamp);
+                    documents.forEach(doc => {
+                        list.innerHTML += renderDocumentItem(doc, doc.id);
+                    });
+                }
+
+                console.log(`Loaded ${documents.length} documents.`);
+            }, (error) => {
+                console.error("Error listening to documents:", error);
+                statusMessage.textContent = `Error loading documents: ${error.message}`;
+                statusMessage.classList.remove('hidden');
+                statusMessage.classList.remove('bg-yellow-100', 'text-yellow-800');
+                statusMessage.classList.add('bg-red-100', 'text-red-800');
+            });
+        }
+
+        /**
+         * Handles form submission to save a new document.
+         */
+        async function saveDocument(e) {
+            e.preventDefault();
+            if (!db || !userId) {
+                console.error("Cannot save: Database or User ID not initialized.");
+                return;
+            }
+
+            const docType = document.getElementById('docType').value.trim();
+            const docNumber = document.getElementById('docNumber').value.trim();
+            const docDescription = document.getElementById('docDescription').value.trim();
+
+            if (!docType || !docNumber || !docDescription) {
+                statusMessage.textContent = "Please fill in all fields.";
+                statusMessage.classList.remove('hidden');
+                statusMessage.classList.remove('bg-red-100', 'text-red-800');
+                statusMessage.classList.add('bg-yellow-100', 'text-yellow-800');
+                return;
+            }
+
+            saveButton.textContent = "Saving...";
+            saveButton.disabled = true;
+
+            const newDocument = {
+                documentType: docType,
+                documentNumber: docNumber,
+                description: docDescription,
+                timestamp: Date.now(),
+            };
+
+            try {
+                // Path for private user data: /artifacts/{appId}/users/{userId}/documents
+                const documentsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'documents');
+                await addDoc(documentsCollectionRef, newDocument);
+
+                form.reset(); // Clear the form on success
+                console.log("Document successfully saved.");
+                statusMessage.classList.add('hidden'); // Clear status on success
+            } catch (error) {
+                console.error("Error saving document:", error);
+                statusMessage.textContent = `Error saving document: ${error.message}`;
+                statusMessage.classList.remove('hidden');
+                statusMessage.classList.remove('bg-yellow-100', 'text-yellow-800');
+                statusMessage.classList.add('bg-red-100', 'text-red-800');
+            } finally {
+                saveButton.textContent = "Save Document";
+                saveButton.disabled = false;
+            }
+        }
+
+
+        /**
+         * Initializes Firebase and sets up authentication.
+         */
+        async function initializeAppAndAuth() {
+            statusMessage.textContent = "Initializing application...";
+            statusMessage.classList.remove('hidden');
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                let authAttempt = null;
+
+                // 1. Try to sign in with the provided custom token
+                if (initialAuthToken) {
+                    authAttempt = signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    // 2. Fallback to anonymous sign-in if no token is available
+                    authAttempt = signInAnonymously(auth);
+                }
+
+                // Await the sign-in attempt
+                await authAttempt;
+
+                // 3. Listen for authentication state changes (this confirms we are ready)
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = `User ID: ${userId}`;
+                        saveButton.disabled = false;
+                        statusMessage.classList.add('hidden');
+                        loadDocuments(); // Start listening for data now that we have a userId
+                        form.addEventListener('submit', saveDocument);
+                        editForm.addEventListener('submit', updateDocument); // Attach update listener
+                        console.log("Authentication successful. User ID:", userId);
+                    } else {
+                        userId = null;
+                        userIdDisplay.textContent = 'User ID: N/A';
+                        saveButton.disabled = true;
+                        statusMessage.textContent = "User not authenticated. Please try reloading.";
+                        statusMessage.classList.remove('hidden');
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                statusMessage.textContent = `Setup Failed: ${error.message}`;
+                statusMessage.classList.remove('bg-yellow-100', 'text-yellow-800');
+                statusMessage.classList.add('bg-red-100', 'text-red-800');
+            }
+        }
+
+        // Start the application setup
+        initializeAppAndAuth();
+
+    </script>
+</body>
+</html>
